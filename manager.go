@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-
 	"mmoallapps/mmo-pg-manager/pkgs/database"
 	"time"
 )
@@ -18,7 +17,6 @@ func main() {
 	fmt.Println("MMO PG Manager")
 	fmt.Println("MMO PG Manager is a tool to manage the MMO PostgreSQL database")
 
-	database.ClearTable("jCase")
 	database.SeedCases()
 	fmt.Println("Seeding cases took :", time.Since(startTime))
 

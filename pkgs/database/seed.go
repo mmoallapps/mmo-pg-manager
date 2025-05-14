@@ -32,6 +32,11 @@ func SeedCases() {
 	}
 	// insert the cases into the database
 	InsertCases(casesToInsert)
+	// insert cases individually to avoid errors
+	// for _, caseData := range casesToInsert {
+	// 	// insert the case into the database
+	// 	InsertCase(caseData)
+	// }
 	fmt.Println("Cases seeded successfully")
 	// print the number of cases inserted
 	fmt.Println("Number of cases inserted:", len(casesToInsert))

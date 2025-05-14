@@ -59,8 +59,7 @@ func InsertCase(caseData MMOCase) {
 	query += `);`
 	_, err := Db.Exec(query)
 	if err != nil {
-		fmt.Println("Error inserting case:", err)
-		fmt.Printf("Query: %s\n", query)
+		fmt.Println("Error inserting case:", err, "company_id:", caseData.company_id, "case_id:", caseData.case_id)
 	}
 }
 
@@ -132,7 +131,10 @@ func InsertCases(cases []MMOCase) {
 		query += `;`
 
 		// Execute the queryF
-		Db.Exec(query)
+		_, err = Db.Exec(query)
+		if err != nil {
+			fmt.Println("Error inserting cases:", err)
+		}
 		fmt.Println("Inserted", len(values), "cases")
 	}
 }
