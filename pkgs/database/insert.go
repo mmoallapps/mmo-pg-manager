@@ -5,9 +5,10 @@ import (
 	"mmoallapps/mmo-pg-manager/pkgs/jsource_views_interface"
 	"strconv"
 	"strings"
+	"time"
 )
 
-var fields = `
+var case_fields = `
 	"case_id",
 	"person_id",
 	"provider_id",
@@ -30,11 +31,22 @@ var fields = `
 	"detail"
 `
 
+var note_fields = `
+"case_id",
+"noteSeq",
+"summary",
+"type",
+"visibility",
+"created",
+"addedBy",
+"note"	
+`
+
 func InsertCase(caseData MMOCase) {
 	// connect to the database
 
 	query := `INSERT INTO "jCase" (`
-	query += fields
+	query += case_fields
 	query += `) VALUES (`
 	query += fmt.Sprintf(`%d,`, caseData.case_id)
 	query += fmt.Sprintf(`%d,`, personIDToInt(caseData.person_id))
@@ -43,7 +55,7 @@ func InsertCase(caseData MMOCase) {
 	query += fmt.Sprintf(`'%s',`, safeString(caseData.summary))
 	query += fmt.Sprintf(`'%s',`, safeString(caseData.description))
 	query += fmt.Sprintf(`'%s',`, safeString(&caseData.contact))
-	query += fmt.Sprintf(`'%s',`, caseData.contactMethod)
+	query += fmt.Sprintf(`'%s',`, safeString(&caseData.contactMethod))
 	query += fmt.Sprintf(`'%s',`, caseData.openDate)
 	query += fmt.Sprintf(`'%s',`, caseData.priority)
 	query += fmt.Sprintf(`'%s',`, caseData.severity)
@@ -60,6 +72,7 @@ func InsertCase(caseData MMOCase) {
 	_, err := Db.Exec(query)
 	if err != nil {
 		fmt.Println("Error inserting case:", err, "company_id:", caseData.company_id, "case_id:", caseData.case_id)
+		fmt.Println("Query:", query)
 	}
 }
 
@@ -74,7 +87,7 @@ func InsertCases(cases []MMOCase) {
 
 		// Start building the query
 		query := `INSERT INTO "jCase" (`
-		query += fields
+		query += case_fields
 		query += `) VALUES `
 
 		// Add rows of values
@@ -149,8 +162,8 @@ func safeString(s *string) string {
 	str = strings.ReplaceAll(str, "'", "''")
 	str = strings.ReplaceAll(str, "\"", "\\\"")
 	str = strings.ReplaceAll(str, "\\", "\\\\")
-	str = strings.ReplaceAll(str, "\n", "\\n")
-	str = strings.ReplaceAll(str, "\r", "\\r")
+	// str = strings.ReplaceAll(str, "\n", "\\n")
+	// str = strings.ReplaceAll(str, "\r", "\\r")
 
 	return str
 }
@@ -163,14 +176,24 @@ func safeNumber(n *int) int {
 }
 
 func personIDToInt(personID *string) int {
-	if personID == nil {
-		return 0
+	if personID == nil || *personID == "" || *personID == " " {
+		return 1 // 1 is unassigned
 	}
+
 	id, err := strconv.Atoi(*personID)
 	if err != nil {
-		return 0
+		return 0 // return 0 if conversion fails
 	}
-	return id
+	// see if user exists in the database
+	query := `Select person_id from "User" where person_id = $1`
+	row := Db.QueryRow(query, id)
+	var userID int
+	err = row.Scan(&userID)
+	if err != nil {
+		fmt.Println("Error getting userID:", id)
+		return 0 // return 0 if user not found
+	}
+	return userID
 }
 
 func JcasetoMMOCase(jcase jsource_views_interface.JCase) MMOCase {
@@ -209,7 +232,7 @@ func UpdateCases(cases []MMOCase) {
 
 		// Start building the query
 		query := `INSERT INTO "jCase" (`
-		query += fields
+		query += case_fields
 		query += `) VALUES `
 
 		// Add rows of values
@@ -281,9 +304,10 @@ func UpdateCases(cases []MMOCase) {
 		query += ` "uatBnk" = EXCLUDED."uatBnk",`
 		query += ` company_id = EXCLUDED.company_id,`
 		query += ` category = EXCLUDED.category,`
-		query += ` type = EXCLUDED.type,`
-		query += ` detail = EXCLUDED.detail`
+		query += ` "type" = EXCLUDED."type",`
+		query += ` "detail" = EXCLUDED."detail"`
 		query += `;`
+
 		_, err := Db.Exec(query)
 		if err != nil {
 			fmt.Printf("Query: %s\n", query)
@@ -294,4 +318,64 @@ func UpdateCases(cases []MMOCase) {
 
 		fmt.Println("Inserted", len(values), "cases")
 	}
+}
+
+func InsertNotes(notes []jsource_views_interface.JNote) {
+	chunkSize := 10000 // Insert in chunks to avoid large queries
+	for i := 0; i < len(notes); i += chunkSize {
+		end := i + chunkSize
+		if end > len(notes) {
+			end = len(notes)
+		}
+
+		// Start building the query
+		query := `INSERT INTO "jCaseNote" (`
+		query += note_fields
+		query += `) VALUES `
+
+		// Add rows of values
+		values := []string{}
+		for j := i; j < end; j++ {
+			// Format the timestamp correctly for PostgreSQL
+			createdDate := formatTimestamp(notes[j].ROW_ADDED_DTTM)
+
+			row := fmt.Sprintf(`(
+                %d,
+                %d,
+                '%s',
+                '%s',
+                '%s',
+                '%s',
+                '%s',
+                '%s'
+            )`,
+				notes[j].CASE_ID,
+				notes[j].NOTE_SEQ_NBR,
+				safeString(&notes[j].RC_SUMMARY),
+				safeString(&notes[j].RC_NOTE_TYPE),
+				safeString(&notes[j].RC_VISIBILITY),
+				createdDate,
+				safeString(notes[j].BO_NAME),
+				safeString(notes[j].RC_DESCRLONG),
+			)
+			values = append(values, row)
+		}
+
+		// Join all rows with commas
+		query += strings.Join(values, ",")
+		query += ` ON CONFLICT (case_id, "noteSeq") DO NOTHING;`
+
+		// Execute the query
+		_, err := Db.Exec(query)
+		if err != nil {
+			fmt.Println("Error inserting notes:", err)
+			// fmt.Printf("Query: %s\n", query)
+		}
+	}
+}
+
+// Add this helper function to format timestamps correctly
+func formatTimestamp(t time.Time) string {
+	// Format in PostgreSQL-compatible timestamp format
+	return t.Format("2006-01-02 15:04:05")
 }

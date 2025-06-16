@@ -14,7 +14,7 @@ type JNote struct {
 	RC_NOTE_TYPE   string    `json:"type"`
 	RC_VISIBILITY  string    `json:"visibility"`
 	ROW_ADDED_DTTM time.Time `json:"created"`
-	BO_NAME        string    `json:"addedBy"`
+	BO_NAME        *string   `json:"addedBy"`
 	RC_DESCRLONG   *string   `json:"note"`
 }
 

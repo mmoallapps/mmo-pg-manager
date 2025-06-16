@@ -12,11 +12,7 @@ func main() {
 	defer database.Close()
 	// clear the screen
 	fmt.Print("\033[H\033[2J")
-	// connect to the database
-	// print the title
-	fmt.Println("MMO PG Manager")
-	fmt.Println("MMO PG Manager is a tool to manage the MMO PostgreSQL database")
-
+	fmt.Println("Clearing and Seeding Jsource cases and notes")
 	database.SeedCases()
 	fmt.Println("Seeding cases took :", time.Since(startTime))
 

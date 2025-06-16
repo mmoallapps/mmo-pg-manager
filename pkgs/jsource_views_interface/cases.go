@@ -3,7 +3,6 @@ package jsource_views_interface
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 
 	_ "github.com/denisenkom/go-mssqldb"
 )
@@ -43,42 +42,9 @@ type JCase struct {
 	RC_DETAIL_DESCR    *string `json:"detail"`
 }
 
-var badUsers = []string{
-	"510736",
-	"670661",
-	"472646",
-	"523421",
-	"333892",
-	"406872",
-	"664797",
-	"1468",
-	"660438",
-	"677753",
-	"640385",
-	"528184",
-	"394605",
-	"445611",
-	"668694",
-	"697153",
-	"693165",
-	"224418",
-	"707495",
-	"668547",
-	"680284",
-	"292110",
-	"667779",
-	"721630",
-	"449256",
-}
-
-var UnassignedCaseParameterArray = []string{
-	"CASE_ID",
-	"PROVIDER_GRP_ID",
-}
-
-var baseQuery = fmt.Sprintf(`Select
+var baseQuery = `Select
 CASE_ID,
-ISNULL(ASSIGNED_TO, '0') AS ASSIGNED_TO,
+ISNULL(ASSIGNED_TO, '1') AS ASSIGNED_TO,
 ISNULL(PROVIDER_GRP_ID, '0') AS PROVIDER_GRP_ID,
 STATUS_DESCR,
 RC_SUMMARY,
@@ -98,14 +64,7 @@ CATEGORY_DESCR,
 RC_TYPE_DESCR,
 RC_DETAIL_DESCR
 From ( SELECT *, ROW_NUMBER() OVER (PARTITION BY CASE_ID ORDER BY JHA_OLNK_PARTITION DESC) AS rn
-FROM PS_JHA_CASE_EXT_VW WHERE STATUS_DESCR NOT IN ('Canceled', 'Closed', 'Resolved')
-AND (ASSIGNED_TO NOT IN (%s))) AS subquery WHERE rn = 1`, strings.Join(func() []string {
-	quotedUsers := make([]string, len(badUsers))
-	for i, user := range badUsers {
-		quotedUsers[i] = "'" + user + "'"
-	}
-	return quotedUsers
-}(), ","))
+FROM PS_JHA_CASE_EXT_VW WHERE STATUS_DESCR NOT IN ('Canceled', 'Closed', 'Resolved')) AS subquery WHERE rn = 1`
 
 func readCases(rows *sql.Rows) ([]JCase, error) {
 	// create a slice to hold the cases
@@ -169,7 +128,7 @@ func GetModifiedCases() ([]JCase, error) {
 	}
 	defer jviewDB.Close()
 	fmt.Println(("Getting Modified Cases from Jview..."))
-	rows, err := jviewDB.Query(baseQuery + " AND ROW_LASTMANT_DTTM > DATEADD(MINUTE, -5, GETDATE())")
+	rows, err := jviewDB.Query(baseQuery + " AND ROW_LASTMANT_DTTM > DATEADD(MINUTE, -10, GETDATE())")
 	if err != nil {
 		return nil, err
 	}
@@ -179,4 +138,47 @@ func GetModifiedCases() ([]JCase, error) {
 		return nil, err
 	}
 	return cases, nil
+}
+
+// GetCasesClosedToday returns cases with status 'Closed' and closed today
+func GetCasesClosedToday() ([]JCase, error) {
+	db, err := sql.Open("mssql", ConnectionString)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	// Adjust the field name for close date if different in your schema
+	query := `
+        SELECT
+            CASE_ID,
+            ASSIGNED_TO,
+            PROVIDER_GRP_ID,
+            STATUS_DESCR,
+            RC_SUMMARY,
+            RC_DESCRLONG,
+            CONTACT_NAME,
+            RC_CONTACT_INFO,
+            ROW_ADDED_DTTM,
+            RC_PRIORITY,
+            RC_SEVERITY,
+            ROW_LASTMANT_DTTM,
+            JHA_OLNK_PARTITION,
+            JHA_OLNK_BANK_NO,
+            JHA_OLNK_UAT_PARTI,
+            JHA_OLNK_UATBNK_NO,
+            COMPANYID,
+            CATEGORY_DESCR,
+            RC_TYPE_DESCR,
+            RC_DETAIL_DESCR
+        FROM PS_JHA_CASE_EXT_VW
+        WHERE STATUS_DESCR in ('Closed', 'Canceled')
+        AND CAST(ROW_LASTMANT_DTTM AS DATE) = CAST(GETDATE() AS DATE)
+    `
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return readCases(rows)
 }
